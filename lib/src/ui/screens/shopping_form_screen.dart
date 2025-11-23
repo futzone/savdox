@@ -1,38 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:savdox/src/core/models/order_model/order.dart';
+import 'package:isar/isar.dart';
+import 'package:savdox/src/core/models/shopping_model/shopping.dart';
 import 'package:savdox/src/core/models/product_model/product.dart';
-import 'package:savdox/src/core/models/customer_model/customer.dart';
-import 'package:savdox/src/core/models/employee_model/employee.dart';
-import 'package:savdox/src/core/providers/home_providers.dart';
+import 'package:savdox/src/core/models/suplier_model/suplier.dart';
+import 'package:savdox/src/core/repositories/shopping_repository.dart';
+import 'package:savdox/src/core/database/isar_database.dart';
+import 'package:savdox/src/core/providers/billing_providers.dart';
 import 'package:savdox/src/ui/widgets/product_selection_sheet.dart';
-import 'package:savdox/src/ui/widgets/customer_selection_sheet.dart';
-import 'package:savdox/src/ui/widgets/employee_selection_sheet.dart';
 import 'package:savdox/src/ui/widgets/amount_input_dialog.dart';
 
-class OrderFormScreen extends HookConsumerWidget {
-  final Order? order;
+final shoppingRepositoryProvider = Provider((ref) => ShoppingRepository());
 
-  const OrderFormScreen({super.key, this.order});
+// Supplier selection provider
+final supplierSelectionProvider = FutureProvider.family<List<Suplier>, String>((
+  ref,
+  searchQuery,
+) async {
+  final isar = IsarDatabase.instance.isar;
+  var query = isar.supliers.where().filter().idGreaterThan(-1);
+
+  if (searchQuery.isNotEmpty) {
+    query = query.fullnameContains(searchQuery, caseSensitive: false);
+  }
+
+  query = query.statusEqualTo(Suplier.activeStatus);
+  return await query.limit(50).findAll();
+});
+
+class ShoppingFormScreen extends HookConsumerWidget {
+  final Shopping? shopping;
+
+  const ShoppingFormScreen({super.key, this.shopping});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final formKey = useMemoized(() => GlobalKey<FormState>());
 
-    // Form Controllers
-    final statusController = useTextEditingController(
-      text: order?.status ?? Order.activeStatus,
-    );
+    final noteController = useTextEditingController(text: shopping?.note ?? '');
 
-    // State
-    final items = useState<List<OrderItem>>(order?.items.toList() ?? []);
-    final selectedCustomer = useState<Customer?>(null);
-    final selectedEmployee = useState<Employee?>(null);
+    final items = useState<List<ShoppingItem>>(shopping?.items.toList() ?? []);
+    final selectedSupplier = useState<Suplier?>(null);
     final isLoading = useState(false);
 
-    // Calculate total sum
+    // Calculate totals
     final totalSum = useMemoized(() {
       return items.value.fold<double>(
         0,
@@ -40,8 +53,14 @@ class OrderFormScreen extends HookConsumerWidget {
       );
     }, [items.value]);
 
-    Future<void> saveOrder() async {
+    Future<void> saveShopping() async {
       if (!formKey.currentState!.validate()) return;
+      if (selectedSupplier.value == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a supplier')),
+        );
+        return;
+      }
       if (items.value.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please add at least one product')),
@@ -51,38 +70,37 @@ class OrderFormScreen extends HookConsumerWidget {
 
       isLoading.value = true;
       try {
-        final repo = ref.read(orderRepositoryProvider);
-        final newOrder = order ?? Order();
+        final repo = ref.read(shoppingRepositoryProvider);
+        final newShopping = shopping ?? Shopping();
 
-        newOrder.customerId = selectedCustomer.value?.id;
-        newOrder.employeeId = selectedEmployee.value?.id;
-        newOrder.status = statusController.text;
-        newOrder.items = items.value;
-        newOrder.totalSum = totalSum;
-        newOrder.finalSum = totalSum; // Can apply discount logic here later
-        newOrder.created = order?.created ?? DateTime.now();
-        newOrder.updated = DateTime.now();
+        newShopping.supplierId = selectedSupplier.value!.id;
+        newShopping.items = items.value;
+        newShopping.totalSum = totalSum;
+        newShopping.finalSum = totalSum; // Can apply discount later
+        newShopping.note = noteController.text.isEmpty
+            ? null
+            : noteController.text;
+        newShopping.status = Shopping.activeStatus;
+        newShopping.created = shopping?.created ?? DateTime.now();
+        newShopping.updated = DateTime.now();
 
-        if (order == null) {
-          await repo.createOrder(newOrder);
+        if (shopping == null) {
+          await repo.createShopping(newShopping);
         } else {
-          await repo.updateOrder(newOrder);
+          await repo.updateShopping(newShopping);
         }
 
-        // Refresh recent orders list
-        ref.read(recentOrdersProvider.notifier).refresh();
-
-        // Refresh dashboard Stats
-        ref.invalidate(dashboardStatsProvider);
+        // Refresh shopping list
+        ref.read(shoppingListProvider.notifier).refresh();
 
         if (context.mounted) {
           Navigator.pop(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                order == null
-                    ? 'Order created successfully'
-                    : 'Order updated successfully',
+                shopping == null
+                    ? 'Shopping created successfully'
+                    : 'Shopping updated successfully',
               ),
             ),
           );
@@ -101,6 +119,94 @@ class OrderFormScreen extends HookConsumerWidget {
       }
     }
 
+    Future<void> selectSupplier() async {
+      final searchController = TextEditingController();
+      final searchQuery = ValueNotifier('');
+
+      final Suplier? supplier = await showModalBottomSheet<Suplier>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (bottomSheetContext) => StatefulBuilder(
+          builder: (context, setState) {
+            final suppliersAsync = ref.watch(
+              supplierSelectionProvider(searchQuery.value),
+            );
+
+            return Container(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search suppliers...',
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              searchQuery.value = value;
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: suppliersAsync.when(
+                      data: (suppliers) {
+                        if (suppliers.isEmpty) {
+                          return const Center(
+                            child: Text('No suppliers found'),
+                          );
+                        }
+                        return ListView.builder(
+                          itemCount: suppliers.length,
+                          itemBuilder: (context, index) {
+                            final supplier = suppliers[index];
+                            return ListTile(
+                              title: Text(supplier.fullname),
+                              subtitle: Text(supplier.phone ?? ''),
+                              onTap: () => Navigator.pop(context, supplier),
+                            );
+                          },
+                        );
+                      },
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (e, s) => Center(child: Text('Error: $e')),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+
+      if (supplier != null) {
+        selectedSupplier.value = supplier;
+      }
+    }
+
     void showProductSelection() async {
       final Product? product = await showModalBottomSheet<Product>(
         context: context,
@@ -110,19 +216,16 @@ class OrderFormScreen extends HookConsumerWidget {
       );
 
       if (product != null) {
-        // Check if product already exists in items
         final existingIndex = items.value.indexWhere(
           (item) => item.productId == product.id,
         );
 
         if (existingIndex != -1) {
-          // Increment amount
-          final updatedItems = List<OrderItem>.from(items.value);
+          final updatedItems = List<ShoppingItem>.from(items.value);
           updatedItems[existingIndex].amount += 1;
           items.value = updatedItems;
         } else {
-          // Add new item
-          final newItem = OrderItem()
+          final newItem = ShoppingItem()
             ..productId = product.id
             ..name = product.name
             ..price = product.price
@@ -134,34 +237,8 @@ class OrderFormScreen extends HookConsumerWidget {
       }
     }
 
-    Future<void> selectCustomer() async {
-      final Customer? customer = await showModalBottomSheet<Customer>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (_) => const CustomerSelectionSheet(),
-      );
-
-      if (customer != null) {
-        selectedCustomer.value = customer;
-      }
-    }
-
-    Future<void> selectEmployee() async {
-      final Employee? employee = await showModalBottomSheet<Employee>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (_) => const EmployeeSelectionSheet(),
-      );
-
-      if (employee != null) {
-        selectedEmployee.value = employee;
-      }
-    }
-
     void updateItemAmount(int index, double delta) {
-      final updatedItems = List<OrderItem>.from(items.value);
+      final updatedItems = List<ShoppingItem>.from(items.value);
       final item = updatedItems[index];
       final newAmount = item.amount + delta;
 
@@ -184,14 +261,16 @@ class OrderFormScreen extends HookConsumerWidget {
       );
 
       if (newAmount != null) {
-        final updatedItems = List<OrderItem>.from(items.value);
+        final updatedItems = List<ShoppingItem>.from(items.value);
         updatedItems[index].amount = newAmount;
         items.value = updatedItems;
       }
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(order == null ? 'Add Order' : 'Edit Order')),
+      appBar: AppBar(
+        title: Text(shopping == null ? 'Add Shopping' : 'Edit Shopping'),
+      ),
       body: Form(
         key: formKey,
         child: Column(
@@ -200,42 +279,29 @@ class OrderFormScreen extends HookConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // Customer Selection
+                  // Supplier Selection
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.person),
-                      title: const Text('Customer'),
+                      leading: const Icon(Icons.local_shipping),
+                      title: const Text('Supplier *'),
                       subtitle: Text(
-                        selectedCustomer.value?.fullname ?? 'Tap to select',
+                        selectedSupplier.value?.fullname ?? 'Tap to select',
                       ),
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: isLoading.value ? null : selectCustomer,
+                      onTap: isLoading.value ? null : selectSupplier,
                     ),
                   ),
                   const SizedBox(height: 16),
 
-                  // Employee Selection
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.badge),
-                      title: const Text('Employee'),
-                      subtitle: Text(
-                        selectedEmployee.value?.fullname ?? 'Tap to select',
-                      ),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      onTap: isLoading.value ? null : selectEmployee,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Status
+                  // Note
                   TextFormField(
-                    controller: statusController,
+                    controller: noteController,
                     decoration: const InputDecoration(
-                      labelText: 'Status',
+                      labelText: 'Note',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.info),
+                      prefixIcon: Icon(Icons.note),
                     ),
+                    maxLines: 2,
                     enabled: !isLoading.value,
                   ),
                   const SizedBox(height: 24),
@@ -245,7 +311,7 @@ class OrderFormScreen extends HookConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Order Items',
+                        'Products',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -272,22 +338,7 @@ class OrderFormScreen extends HookConsumerWidget {
                         ),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 48,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'No items added',
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: const Text('No products added'),
                     )
                   else
                     ListView.separated(
@@ -349,7 +400,6 @@ class OrderFormScreen extends HookConsumerWidget {
                               children: [
                                 Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
                                       '\$${(item.amount * item.unitPrice).toStringAsFixed(2)}',
@@ -438,9 +488,8 @@ class OrderFormScreen extends HookConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Save Button
                     FilledButton.icon(
-                      onPressed: isLoading.value ? null : saveOrder,
+                      onPressed: isLoading.value ? null : saveShopping,
                       icon: isLoading.value
                           ? const SizedBox(
                               width: 20,
@@ -449,7 +498,9 @@ class OrderFormScreen extends HookConsumerWidget {
                             )
                           : const Icon(Icons.save),
                       label: Text(
-                        order == null ? 'Create Order' : 'Update Order',
+                        shopping == null
+                            ? 'Create Shopping'
+                            : 'Update Shopping',
                       ),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(double.infinity, 50),

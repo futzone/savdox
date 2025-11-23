@@ -13,6 +13,19 @@ final navigationIndexProvider = StateProvider<int>((ref) => 0);
 class MainScreen extends ConsumerWidget {
   const MainScreen({super.key});
 
+  // Helper method to map navigation index to screen index
+  int _getScreenIndex(int navIndex, bool isWideScreen) {
+    if (isWideScreen) {
+      // Wide screen: indices 0,1 -> screens 0,1; index 2 is action; indices 3,4 -> screens 2,3
+      if (navIndex <= 1) return navIndex;
+      if (navIndex == 2) return 0; // Should not happen, but fallback to home
+      return navIndex - 1; // 3 -> 2, 4 -> 3
+    } else {
+      // Mobile: indices 0,1,2,3 map directly to screens 0,1,2,3
+      return navIndex;
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentIndex = ref.watch(navigationIndexProvider);
@@ -33,7 +46,7 @@ class MainScreen extends ConsumerWidget {
               selectedIndex: currentIndex,
               onDestinationSelected: (index) {
                 if (index == 2) {
-                  // Add Order selected
+                  // Add Order selected - open form instead of changing screen
                   _showAddOrderScreen(context);
                 } else {
                   ref.read(navigationIndexProvider.notifier).state = index;
@@ -68,9 +81,7 @@ class MainScreen extends ConsumerWidget {
                 ),
               ],
             ),
-          Expanded(
-            child: screens[currentIndex >= 2 ? currentIndex - 1 : currentIndex],
-          ),
+          Expanded(child: screens[_getScreenIndex(currentIndex, isWideScreen)]),
         ],
       ),
       bottomNavigationBar: isWideScreen

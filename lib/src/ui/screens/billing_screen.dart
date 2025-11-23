@@ -4,6 +4,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:savdox/src/core/providers/billing_providers.dart';
 import 'package:savdox/src/ui/widgets/shopping_list_item.dart';
 import 'package:savdox/src/ui/widgets/transaction_list_item.dart';
+import 'package:savdox/src/ui/screens/transaction_form_screen.dart';
+import 'package:savdox/src/ui/screens/shopping_form_screen.dart';
 
 class BillingScreen extends HookConsumerWidget {
   const BillingScreen({super.key});
@@ -11,6 +13,7 @@ class BillingScreen extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tabController = useTabController(initialLength: 2);
+    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -27,16 +30,29 @@ class BillingScreen extends HookConsumerWidget {
         controller: tabController,
         children: const [_TransactionsTab(), _ShoppingTab()],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // TODO: Show dialog to add transaction or shopping based on current tab
-          // For now, just a placeholder action
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Add feature coming soon')),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: keyboardVisible
+          ? null
+          : FloatingActionButton(
+              onPressed: () {
+                // Open appropriate form based on current tab
+                if (tabController.index == 0) {
+                  // Transactions tab - open transaction form
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const TransactionFormScreen(),
+                    ),
+                  );
+                } else {
+                  // Shopping tab - open shopping form
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>  ShoppingFormScreen(),
+                    ),
+                  );
+                }
+              },
+              child: const Icon(Icons.add),
+            ),
     );
   }
 }

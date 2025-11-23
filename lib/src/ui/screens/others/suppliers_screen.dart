@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:savdox/src/core/providers/others_providers.dart';
+import 'package:savdox/src/ui/screens/others/supplier_form_screen.dart';
 
 class SuppliersScreen extends HookConsumerWidget {
   const SuppliersScreen({super.key});
@@ -30,9 +31,8 @@ class SuppliersScreen extends HookConsumerWidget {
         actions: [
           IconButton(
             onPressed: () {
-              // TODO: Add supplier functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Add Supplier coming soon')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SupplierFormScreen()),
               );
             },
             icon: const Icon(Icons.add),
@@ -108,7 +108,12 @@ class SuppliersScreen extends HookConsumerWidget {
                       title: Text(suplier.fullname),
                       subtitle: Text(suplier.phone ?? 'No contact info'),
                       onTap: () {
-                        // TODO: Show supplier details/edit
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                SupplierFormScreen(supplier: suplier),
+                          ),
+                        );
                       },
                     );
                   },

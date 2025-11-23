@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:savdox/src/core/providers/others_providers.dart';
+import 'package:savdox/src/ui/screens/others/employee_form_screen.dart';
 
 class EmployeesScreen extends HookConsumerWidget {
   const EmployeesScreen({super.key});
@@ -30,9 +31,8 @@ class EmployeesScreen extends HookConsumerWidget {
         actions: [
           IconButton(
             onPressed: () {
-              // TODO: Add employee functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Add Employee coming soon')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EmployeeFormScreen()),
               );
             },
             icon: const Icon(Icons.add),
@@ -108,7 +108,12 @@ class EmployeesScreen extends HookConsumerWidget {
                       title: Text(employee.fullname),
                       subtitle: Text(employee.role ?? 'No Role'),
                       onTap: () {
-                        // TODO: Show employee details/edit
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                EmployeeFormScreen(employee: employee),
+                          ),
+                        );
                       },
                     );
                   },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:savdox/src/core/providers/others_providers.dart';
+import 'package:savdox/src/ui/screens/others/customer_form_screen.dart';
 
 class CustomersScreen extends HookConsumerWidget {
   const CustomersScreen({super.key});
@@ -30,9 +31,8 @@ class CustomersScreen extends HookConsumerWidget {
         actions: [
           IconButton(
             onPressed: () {
-              // TODO: Add customer functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Add Customer coming soon')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CustomerFormScreen()),
               );
             },
             icon: const Icon(Icons.add),
@@ -110,7 +110,12 @@ class CustomersScreen extends HookConsumerWidget {
                         customer.phone ?? customer.email ?? 'No contact info',
                       ),
                       onTap: () {
-                        // TODO: Show customer details/edit
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                CustomerFormScreen(customer: customer),
+                          ),
+                        );
                       },
                     );
                   },
